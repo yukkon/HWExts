@@ -71,7 +71,7 @@
       .sort((a, b) => b.power - a.power);
   }
 
-  async function ff() {
+  async function ff(autoStart = false) {
     const h = localStorage.getItem(`autofarm_heroes_${userId}`);
     const hhh = JSON.parse(h) || {};
     const heroes = await hnc();
@@ -89,14 +89,16 @@
       };
     });
 
-    let answer = await popup.confirm(
+    let answer = false;
+    if (autoStart) {answer = true;}
+     else { answer = await popup.confirm(
       "Выбери героев",
       [
         { result: false, isClose: true },
         { msg: "Ok", result: true, isInput: false },
       ],
       sel
-    );
+    ); }
     if (answer) {
       const taskList = popup.getCheckBoxes();
       let selectedHeroes = taskList
@@ -125,14 +127,15 @@
           }));
         });
 
-        answer = await popup.confirm(
+        if (autoStart) {answer = true;} 
+        else {answer = await popup.confirm(
           "Выбери ранги",
           [
             { result: false, isClose: true },
             { msg: "Ok", result: true, isInput: false },
           ],
           sel.flat()
-        );
+        );}
         if (answer) {
           const taskList = popup.getCheckBoxes();
           let selectedRangs = taskList
@@ -513,4 +516,12 @@
       setProgress("Нічога не атрымалі. (Не дастаткова энкі ці ўсе есць)");
     }
   }
+  /*
+   * ff will now receives 1 argument, if it's true it will farm automatically. startFarm passes true into it, 
+  but it should pass a variable that's linked to user settings later (maybe added to the HWH "Settings" dropdown
+  */
+function startFarm() {
+  ff(true);
+}
+setTimeout(startFarm,34e3);
 })();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.17
+// @version      1.0.18
 // @description  try to take over the world!
 // @author       yukkon
 // @match        https://www.hero-wars.com/*
@@ -34,19 +34,37 @@
   const { buttons } = HWHData;
 
   buttons["autokech"] = {
-    name: "Аўтафарм",
-    title: "Аутаматычны фарм ресурсаў партрэбных героям",
-    color: "green",
-    onClick: async () => {
-      const is_raid = await check_raid();
-      if (!is_raid) {
-        setProgress(
-          "Вы не валодаеце залатым квітком і ваш VIP не дазваляе праводзіць рэйды"
-        );
-        return;
-      }
-      ff();
-    },
+    isCombine: true,
+    combineList: [
+      {
+        get name() {
+          return "Аўтафарм";
+        },
+        get title() {
+          return "Аутаматычны фарм ресурсаў партрэбных героям";
+        },
+        onClick: async () => {
+          const is_raid = await check_raid();
+          if (!is_raid) {
+            setProgress(
+              "Вы не валодаеце залатым квітком і ваш VIP не дазваляе праводзіць рэйды"
+            );
+            return;
+          }
+          ff();
+        },
+      },
+      {
+        name: "⛭",
+        onClick: async () => {
+          settings();
+        },
+        get title() {
+          return "Налады";
+        },
+        color: "green",
+      },
+    ],
   };
 
   async function hnc() {
@@ -71,7 +89,7 @@
       .sort((a, b) => b.power - a.power);
   }
 
-  async function ff() {
+  async function settings() {
     const h = localStorage.getItem(`autofarm_heroes_${userId}`);
     const hhh = JSON.parse(h) || {};
     const heroes = await hnc();
@@ -157,7 +175,19 @@
           }
         }
       }
+      return selected;
+    }
+  }
+
+  async function ff() {
+    const selected = JSON.parse(
+      localStorage.getItem(`autofarm_heroes_${userId}`)
+    );
+    if (selected) {
       hh(selected);
+    } else {
+      await settings();
+      hh();
     }
   }
 
@@ -489,7 +519,7 @@
         );
       }
       if (o.count > 0) {
-        ress.push(o);
+        ress.push({ ...o, need: res.count });
       }
 
       if (stamina < times * mission.cost) {
@@ -503,7 +533,7 @@
       let con = ress
         .map(
           (o) =>
-            `${o.count} '${o.name}' выкарыстана энки ${o.used} (${(
+            `${o.count} / ${o.need} '${o.name}' выкарыстана энки ${o.used} (${(
               o.used / o.count
             ).toFixed(2)})`
         )

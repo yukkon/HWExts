@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.18
+// @version      1.0.19
 // @description  try to take over the world!
 // @author       yukkon
 // @match        https://www.hero-wars.com/*
@@ -55,7 +55,7 @@
         },
       },
       {
-        name: "⛭",
+        name: '<span style="color: White; font-size: 24px;">⛭</span>',
         onClick: async () => {
           settings();
         },

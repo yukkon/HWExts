@@ -9,10 +9,9 @@
 // @description:en	Extension for HeroWarsHelper script
 // @description:ru	Расширение для скрипта HeroWarsHelper
 // @resource json   https://support.oneskyapp.com/hc/en-us/article_attachments/202761727
-// @downloadURL     https://github.com/yukkon/HWExts/raw/refs/heads/main/HWHYukkonExt.user.js
-// @updateURL       https://github.com/yukkon/HWExts/raw/refs/heads/main/HWHYukkonExt.user.js
-// @icon  		    	https://www.google.com/s2/favicons?sz=64&domain=hero-wars.com
-// @icon64		    	https://www.google.com/s2/favicons?sz=64&domain=hero-wars.com
+// @downloadURL     hhttps://yukkon.github.io/HWExts/HWHYukkonExt.js
+// @updateURL       https://yukkon.github.io/HWExts/HWHYukkonExt.js
+// @icon  		    	https://lh3.googleusercontent.com/a/ACg8ocI7HD7_lM6wzmL1Giq8A0gXjtlsiyMDXJx5sX8CmT5LX4NiJw2t=s315-c-no
 // @match	      		https://www.hero-wars.com/*
 // @match		      	https://apps-1701433570146040.apps.fbsbx.com/*
 // @run-at		      document-start
@@ -36,7 +35,7 @@
   );
 
   const { othersPopupButtons } = HWHData;
-const { popup, Events } = HWHFuncs;
+  const { popup, Events } = HWHFuncs;
 
   othersPopupButtons.push({
     msg: "Нейкае непатрэбства",

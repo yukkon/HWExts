@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.19
+// @version      1.0.22
 // @description  try to take over the world!
 // @author       yukkon
 // @match        https://www.hero-wars.com/*
@@ -33,6 +33,8 @@
 
   const { buttons } = HWHData;
 
+  const is_raid = false;
+
   buttons["autokech"] = {
     isCombine: true,
     combineList: [
@@ -44,7 +46,7 @@
           return "Аутаматычны фарм ресурсаў партрэбных героям";
         },
         onClick: async () => {
-          const is_raid = await check_raid();
+          is_raid = await check_raid();
           if (!is_raid) {
             setProgress(
               "Вы не валодаеце залатым квітком і ваш VIP не дазваляе праводзіць рэйды"
@@ -231,7 +233,7 @@
         let co = heroes
           .map((id) => `\t${cheats.translate(`LIB_HERO_NAME_${id}`)}`)
           .join("<br />");
-        console.info(`Качаем:<br/>${co}`);
+        console.info(`Качаем:-${co}`);
       } else {
         let co = Object.keys(heroes)
           .map((id) => {
@@ -245,11 +247,11 @@
             };
 
             return `\t${hero.name}(${hero.id}) - [${hero.colors
-              .map((c) => c.name + c.count)
+              .map((c) => c.name + (c.count || ""))
               .join("|")}]`;
           })
           .join("<br />");
-        console.info(`Качаем:<br/>${co}`);
+        console.info(`Качаем:-${co}`);
         lo = Object.keys(heroes).reduce((acc, id) => {
           let her = hs.find((e) => e.id == id);
           let h_items = heroes[id]
@@ -449,18 +451,13 @@
     let stamina = AutoMissions.userInfo.refillable.find(
       (x) => x.id == 1
     ).amount;
-    const vipLevel = Math.max(
-      ...lib.data.level.vip
-        .filter((l) => l.vipPoints <= +AutoMissions.userInfo.vipPoints)
-        .map((l) => l.level)
-    );
     const ress = [];
     while (res) {
       const mission = res.missions.find(
         (x) => x.id == Math.max(...res.missions.map((y) => y.id))
       );
       let times = 1;
-      if (vipLevel >= 5) {
+      if (is_raid) {
         times = 10;
       }
       let o = {

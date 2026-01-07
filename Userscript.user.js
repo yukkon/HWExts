@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.23
+// @version      1.0.24
 // @description  try to take over the world!
 // @author       yukkon
 // @match        https://www.hero-wars.com/*
@@ -95,7 +95,7 @@
     const h = localStorage.getItem(`autofarm_heroes_${userId}`);
     const hhh = JSON.parse(h) || {};
     const heroes = await hnc();
-    let sel = heroes.slice(0, 10).map((hero) => {
+    let sel = heroes.map((hero) => {
       let selected = false;
       if (Array.isArray(hhh)) {
         selected = hhh.includes(hero.id);

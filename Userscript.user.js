@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.22
+// @version      1.0.23
 // @description  try to take over the world!
 // @author       yukkon
 // @match        https://www.hero-wars.com/*
@@ -33,7 +33,7 @@
 
   const { buttons } = HWHData;
 
-  const is_raid = false;
+  let is_raid = false;
 
   buttons["autokech"] = {
     isCombine: true,

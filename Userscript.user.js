@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.24
+// @version      1.0.25
 // @description  try to take over the world!
 // @author       yukkon
 // @match        https://www.hero-wars.com/*
@@ -19,37 +19,39 @@
 
   console.log(
     `%cStart ${GM_info.script.name} Extension by ${GM_info.script.author} (v.${GM_info.script.version})`,
-    "color: red"
+    "color: red",
   );
 
   const { addExtentionName } = HWHFuncs;
   addExtentionName(
     GM_info.script.name,
     GM_info.script.version,
-    GM_info.script.author
+    GM_info.script.author,
   );
 
-  const { setProgress, popup } = HWHFuncs;
+  const { setProgress, popup, Events } = HWHFuncs;
 
-  const { buttons } = HWHData;
+  const { buttons, checkboxes } = HWHData;
 
   let is_raid = false;
+
+  checkboxes["autokech"] = {
+    title: "Аутаматычны запуск Аўтафарма пры старце HeroWarsHelper",
+    cbox: null,
+    label: "АўтаСтарт Аўтафарма",
+    default: false,
+  };
 
   buttons["autokech"] = {
     isCombine: true,
     combineList: [
       {
-        get name() {
-          return "Аўтафарм";
-        },
-        get title() {
-          return "Аутаматычны фарм ресурсаў партрэбных героям";
-        },
-        onClick: async () => {
-          is_raid = await check_raid();
+        name: "Аўтафарм",
+        title: "Аутаматычны фарм ресурсаў партрэбных героям",
+        onClick: () => {
           if (!is_raid) {
             setProgress(
-              "Вы не валодаеце залатым квітком і ваш VIP не дазваляе праводзіць рэйды"
+              "Вы не валодаеце залатым квітком і ваш VIP не дазваляе праводзіць рэйды",
             );
             return;
           }
@@ -68,6 +70,18 @@
       },
     ],
   };
+
+  Events.on("startGame", async (r) => {
+    console.log("АўтаСтарт Аўтафарма", checkboxes["autokech"].cbox?.checked);
+    is_raid = await check_raid();
+    if (is_raid && checkboxes["autokech"].cbox?.checked) {
+      ff();
+    } else {
+      setProgress(
+        "Вы не валодаеце залатым квітком і ваш VIP не дазваляе праводзіць рэйды",
+      );
+    }
+  });
 
   async function hnc() {
     const Heroes = await Send({
@@ -115,7 +129,7 @@
         { result: false, isClose: true },
         { msg: "Ok", result: true, isInput: false },
       ],
-      sel
+      sel,
     );
     if (answer) {
       const taskList = popup.getCheckBoxes();
@@ -126,7 +140,7 @@
       if (selectedHeroes.length > 0) {
         localStorage.setItem(
           `autofarm_heroes_${userId}`,
-          JSON.stringify(selectedHeroes)
+          JSON.stringify(selectedHeroes),
         );
         selected = selectedHeroes;
 
@@ -134,13 +148,13 @@
           let hero = heroes.find((h) => h.id == id);
           return Array.from(
             { length: 18 - hero.color + 1 },
-            (_, i) => i + hero.color
+            (_, i) => i + hero.color,
           ).map((c) => ({
             color: cheats.translate(lib.data.enum.heroColor[c].locale_key),
             name: `${hero.id}|${c}`,
             checked: hhh[hero.id]?.includes(c) || false,
             label: `${hero.name} - ${cheats.translate(
-              lib.data.enum.heroColor[c].locale_key
+              lib.data.enum.heroColor[c].locale_key,
             )} ${lib.data.enum.heroColor[c].ident.match(/\+/g)?.length || ""}`,
           }));
         });
@@ -151,7 +165,7 @@
             { result: false, isClose: true },
             { msg: "Ok", result: true, isInput: false },
           ],
-          sel.flat()
+          sel.flat(),
         );
         if (answer) {
           const taskList = popup.getCheckBoxes();
@@ -171,7 +185,7 @@
           if (Object.keys(selectedRangs).length > 0) {
             localStorage.setItem(
               `autofarm_heroes_${userId}`,
-              JSON.stringify(selectedRangs)
+              JSON.stringify(selectedRangs),
             );
             selected = selectedRangs;
           }
@@ -183,7 +197,7 @@
 
   async function ff() {
     const selected = JSON.parse(
-      localStorage.getItem(`autofarm_heroes_${userId}`)
+      localStorage.getItem(`autofarm_heroes_${userId}`),
     );
     if (selected) {
       hh(selected);
@@ -203,7 +217,7 @@
     const vipLevel = Math.max(
       ...lib.data.level.vip
         .filter((l) => l.vipPoints <= +userInfo.result.response.vipPoints)
-        .map((l) => l.level)
+        .map((l) => l.level),
     );
 
     return vipLevel >= 1 || !!userInventory.result.response.consumable[151];
@@ -221,7 +235,7 @@
       }, {});
       console.info(
         `Качаем: '${cheats.translate(`LIB_HERO_NAME_${her.id}`)}'`,
-        true
+        true,
       );
     } else {
       if (Array.isArray(heroes)) {
@@ -278,7 +292,7 @@
     }
 
     let needs = Object.keys(lo).map(
-      (k) => `${cheats.translate(`LIB_GEAR_NAME_${k}`)}(${k}) - ${lo[k]}`
+      (k) => `${cheats.translate(`LIB_GEAR_NAME_${k}`)}(${k}) - ${lo[k]}`,
     );
     console.log("Патрэбна", needs);
 
@@ -416,7 +430,7 @@
 
           return acc;
         },
-        {}
+        {},
       );
 
       const res = f0({ gear: resources });
@@ -429,8 +443,8 @@
           } ${cheats.translate(
             `LIB_${res.key.replace("fragment", "").toUpperCase()}_NAME_${
               res.value
-            }`
-          )} `
+            }`,
+          )} `,
         );
         console.log("Можна атрымаць у миссіях", res.missions);
         localStorage.setItem("autofarm", JSON.stringify(res));
@@ -449,12 +463,12 @@
       return;
     }
     let stamina = AutoMissions.userInfo.refillable.find(
-      (x) => x.id == 1
+      (x) => x.id == 1,
     ).amount;
     const ress = [];
     while (res) {
       const mission = res.missions.find(
-        (x) => x.id == Math.max(...res.missions.map((y) => y.id))
+        (x) => x.id == Math.max(...res.missions.map((y) => y.id)),
       );
       let times = 1;
       if (is_raid) {
@@ -467,7 +481,7 @@
             cheats.translate(
               `LIB_${res.key.replace("fragment", "").toUpperCase()}_NAME_${
                 res.value
-              }`
+              }`,
             ),
         count: 0,
         used: 0,
@@ -511,8 +525,8 @@
           `Атрымалі: ${o.count} / ${res.count} '${
             o.name
           }' <br> выкарыставана энки ${o.used} (${(o.used / o.count).toFixed(
-            2
-          )})`
+            2,
+          )})`,
         );
       }
       if (o.count > 0) {
@@ -532,7 +546,7 @@
           (o) =>
             `${o.count} / ${o.need} '${o.name}' выкарыстана энки ${o.used} (${(
               o.used / o.count
-            ).toFixed(2)})`
+            ).toFixed(2)})`,
         )
         .join("<br>");
       setProgress(`Атрымалі:<br>${con}`);

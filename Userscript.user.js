@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.25
+// @version      1.0.26
 // @description  try to take over the world!
 // @author       yukkon
 // @match        https://www.hero-wars.com/*
@@ -33,7 +33,7 @@
 
   const { buttons, checkboxes } = HWHData;
 
-  let is_raid = false;
+  const is_raid = {};
 
   checkboxes["autokech"] = {
     title: "Аутаматычны запуск Аўтафарма пры старце HeroWarsHelper",
@@ -49,13 +49,13 @@
         name: "Аўтафарм",
         title: "Аутаматычны фарм ресурсаў партрэбных героям",
         onClick: () => {
-          if (!is_raid) {
+          if (is_raid.vip >= 1 || is_raid.ticket) {
+            ff();
+          } else {
             setProgress(
               "Вы не валодаеце залатым квітком і ваш VIP не дазваляе праводзіць рэйды",
             );
-            return;
           }
-          ff();
         },
       },
       {
@@ -63,9 +63,7 @@
         onClick: async () => {
           settings();
         },
-        get title() {
-          return "Налады";
-        },
+        title: "Налады",
         color: "green",
       },
     ],
@@ -73,9 +71,11 @@
 
   Events.on("startGame", async (r) => {
     console.log("АўтаСтарт Аўтафарма", checkboxes["autokech"].cbox?.checked);
-    is_raid = await check_raid();
-    if (is_raid && checkboxes["autokech"].cbox?.checked) {
-      ff();
+    await check_raid();
+    if (is_raid.vip >= 1 || is_raid.ticket) {
+      if (checkboxes["autokech"].cbox?.checked) {
+        ff();
+      }
     } else {
       setProgress(
         "Вы не валодаеце залатым квітком і ваш VIP не дазваляе праводзіць рэйды",
@@ -84,9 +84,7 @@
   });
 
   async function hnc() {
-    const Heroes = await Send({
-      calls: [{ name: "heroGetAll", args: {}, ident: "body" }],
-    }).then((r) => r.results[0].result.response);
+    const Heroes = await Caller.send("heroGetAll");
 
     return Object.values(Heroes)
       .map((h) => {
@@ -208,19 +206,18 @@
   }
 
   async function check_raid() {
-    const [userInfo, userInventory] = await Send({
-      calls: [
-        { name: "userGetInfo", args: {}, ident: "group_0_body" },
-        { name: "inventoryGet", args: {}, ident: "group_1_body" },
-      ],
-    }).then((r) => r.results);
+    const [userInfo, userInventory] = await Caller.send([
+      "userGetInfo",
+      "inventoryGet",
+    ]);
     const vipLevel = Math.max(
       ...lib.data.level.vip
-        .filter((l) => l.vipPoints <= +userInfo.result.response.vipPoints)
+        .filter((l) => l.vipPoints <= +userInfo.vipPoints)
         .map((l) => l.level),
     );
 
-    return vipLevel >= 1 || !!userInventory.result.response.consumable[151];
+    is_raid.vip = vipLevel;
+    is_raid.ticket = !!userInventory.consumable[151];
   }
 
   async function hh(heroes) {
@@ -380,16 +377,14 @@
         return out;
       };
 
-      let resp = await Send({
-        calls: [
-          { name: "inventoryGet", args: {}, ident: "group_0_body" },
-          { name: "userGetInfo", args: {}, ident: "group_1_body" },
-          { name: "missionGetAll", args: {}, ident: "group_2_body" },
-        ],
-      });
-      this.inventory = resp.results[0].result.response;
-      this.userInfo = resp.results[1].result.response;
-      this.missions = resp.results[2].result.response;
+      let [inventoryGet, userGetInfo, missionGetAll] = await Caller.send([
+        "inventoryGet",
+        "userGetInfo",
+        "missionGetAll",
+      ]);
+      this.inventory = inventoryGet;
+      this.userInfo = userGetInfo;
+      this.missions = missionGetAll;
 
       this.availableMissionsToRaid = Object.values(this.missions)
         .filter((mission) => mission.stars === 3)
@@ -434,8 +429,6 @@
       );
 
       const res = f0({ gear: resources });
-
-      console.log("патрэбна", res); //  {"fragmentGear": "167", count: 32} => {key: "fragmentGear", value: "167", count: 32}
       if (res) {
         console.log(
           `Патрэбна: ${res.count} ${
@@ -471,7 +464,7 @@
         (x) => x.id == Math.max(...res.missions.map((y) => y.id)),
       );
       let times = 1;
-      if (is_raid) {
+      if (is_raid.vip >= 5 || is_raid.ticket) {
         times = 10;
       }
       let o = {
@@ -555,3 +548,8 @@
     }
   }
 })();
+/*
+ == Што новага ==
+ 1.0.25 - дабаўлены чэкбокс у налады які дазваляе запускаць аўтафарм пры старці галоўнага скрыпта
+ 1.0.26 - выпраулены рэйд 10 
+*/

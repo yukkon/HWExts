@@ -1,14 +1,16 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.26
+// @version      1.0.27
 // @description  try to take over the world!
 // @author       yukkon
-// @match        https://www.hero-wars.com/*
-// @icon         https://www.google.com/s2/favicons?sz=64&domain=hero-wars.com
+// @match			   https://www.hero-wars.com/*
+// @match		  	 https://apps-1701433570146040.apps.fbsbx.com/*
+// @icon  	     https://lh3.googleusercontent.com/a/ACg8ocI7HD7_lM6wzmL1Giq8A0gXjtlsiyMDXJx5sX8CmT5LX4NiJw2t=s315-c-no
 // @grant        none
 // @downloadURL  https://yukkon.github.io/HWExts/Userscript.user.js
 // @updateURL    https://yukkon.github.io/HWExts/Userscript.user.js
+// @homepage		 https://github.com/yukkon/HWExts
 // ==/UserScript==
 
 (function () {
@@ -339,12 +341,20 @@
                             ?.fragmentCount -
                         h,
                     };
+                    if (res.count < 1) {
+                      this.inventory[`fragment${capitalized}`][id] -=
+                        obj[item][id] *
+                        count *
+                        lib.data.inventoryItem[item][id]?.fragmentMergeCost
+                          ?.fragmentCount;
+                    }
                   } else {
                     res = {
                       key: item,
                       value: id,
                       count: obj[item][id] * count - h,
                     };
+                    // NEED TO REDUCE ?
                   }
                   if (res.count < 1) res = undefined;
                 }
@@ -533,6 +543,7 @@
       res = await AutoMissions.start(items);
       stamina = AutoMissions.userInfo.refillable.find((x) => x.id == 1).amount;
     }
+    cheats.refreshGame(); //refreshRefillable
     if (ress.length > 0) {
       let con = ress
         .map(
@@ -552,4 +563,5 @@
  == Што новага ==
  1.0.25 - дабаўлены чэкбокс у налады які дазваляе запускаць аўтафарм пры старці галоўнага скрыпта
  1.0.26 - выпраулены рэйд 10 
+ 1.0.27 - выпраўлена памылка з фрагментамі 
 */

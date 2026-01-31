@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHAuto
 // @namespace    http://tampermonkey.net/
-// @version      1.0.27
+// @version      1.0.28
 // @description  try to take over the world!
 // @author       yukkon
 // @match			   https://www.hero-wars.com/*
@@ -543,7 +543,7 @@
       res = await AutoMissions.start(items);
       stamina = AutoMissions.userInfo.refillable.find((x) => x.id == 1).amount;
     }
-    cheats.refreshGame(); //refreshRefillable
+    //cheats.refreshGame(); //refreshRefillable
     if (ress.length > 0) {
       let con = ress
         .map(

@@ -139,6 +139,20 @@
     return DataStorage[artifactStorageKey].ob(String(artifactId));
   }
 
+  // Закрывает попап результатов ("Артыфакты Тытанау") точно так же, как это
+  // делает сам hwh.js по нажатию Escape — корректно разрешает промис
+  // popup.confirm(...), а не просто прячет DOM-элемент
+  function closeResultsPopup() {
+    if (popup.dialogPromice) {
+      const { func, result } = popup.dialogPromice;
+      popup.dialogPromice = null;
+      popup.hide();
+      func(result);
+    } else {
+      popup.hide();
+    }
+  }
+
   // Открывает попап просмотра артефактов титана напрямую по id титана
   function goTitanArtifact(titanId) {
     const player = getPlayer();
@@ -147,6 +161,7 @@
       console.error("Titan", titanId, "not found");
       return;
     }
+    closeResultsPopup();
     const TitanArtifactsPopupMediator =
       selfGame["game.mediator.gui.popup.artifacts.TitanArtifactsPopupMediator"];
     const event = new selfGame[
@@ -188,6 +203,7 @@
       return;
     }
 
+    closeResultsPopup();
     const event = new selfGame[
       "game.mediator.gui.popup.PopupStashEventParams"
     ]();
@@ -249,11 +265,11 @@
           const tts = titans
             .map(
               (t) =>
-                `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>` +
-                ` (<a href="#" onClick="goTitanArtifactMerchant(${id},${t})">купить</a>)`,
+                `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>`,
             )
             .join(", ");
-          ht.push(`<li>${art_name}: ${need} (${tts})</li>`);
+          const buyLink = `<a href="#" onClick="goTitanArtifactMerchant(${id},${titans[0]})">${art_name}</a>`;
+          ht.push(`<li>${buyLink}: ${need} (${tts})</li>`);
         });
         ht.push("</ul>");
         return ht.join("");

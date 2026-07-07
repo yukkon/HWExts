@@ -70,65 +70,10 @@
     }
     return null;
   }
-
-  function getPlayer() {
-    const GM_0 = getProtoFn(Game.GameModel, 0);
-    const instance = getFnP(Game.GameModel, "get_instance");
-    return Game.GameModel[instance]()[GM_0];
-  }
-
-  function getTitans() {
-    const IM_0 = getProtoFn(selfGame["haxe.ds.IntMap"], 0);
-    const player = getPlayer();
-    const titanDataKey = findFieldIndexByClass(
-      player,
-      "game.model.user.hero.PlayerTitanData",
-    )?.key;
-    const playerTitanData = player[titanDataKey];
-    const titanMapKey = findFieldIndexByClass(
-      playerTitanData,
-      "haxe.ds.IntMap",
-    )?.key;
-    return playerTitanData[titanMapKey][IM_0];
-  }
-
-  function getTitan(id) {
-    return getTitans()[id];
-  }
-
-  function goTitanArtifact(titanId) {
-    const player = getPlayer();
-    const titan = getTitan(titanId);
-    if (titan == null) {
-      console.error("Titan", titanId, "not found");
-      return;
-    }
-    const TitanArtifactsPopupMediator =
-      selfGame["game.mediator.gui.popup.artifacts.TitanArtifactsPopupMediator"];
-    const event = new selfGame[
-      "game.mediator.gui.popup.PopupStashEventParams"
-    ]();
-    new TitanArtifactsPopupMediator(player, null, titan.$A).open(event);
-  }
-  window.goTitanArtifact = goTitanArtifact;
-  // --- базовые хелперы ---
-  function getFnP(classF, nameF) {
-    return Object.entries(classF.__properties__).find((e) => e[1] == nameF)[0];
-  }
-  function getProtoFn(classF, nF) {
-    return Object.keys(classF.prototype)[nF];
-  }
-  function findFieldIndexByClass(instance, className) {
-    const proto = Object.getPrototypeOf(instance);
-    const keys = Object.keys(proto);
-    for (let i = 0; i < keys.length; i++) {
-      try {
-        if (instance[keys[i]]?.__class__?.j === className) {
-          return { index: i, key: keys[i] };
-        }
-      } catch (e) {}
-    }
-    return null;
+  // get_id — вычисляемое Haxe-свойство, поэтому резолвится по имени через __properties__
+  function getId(instance) {
+    const idKey = getFnP(instance.__class__, "get_id");
+    return instance[idKey]();
   }
 
   function getPlayer() {
@@ -151,6 +96,7 @@
     )?.key;
     return playerTitanData[titanMapKey][IM_0];
   }
+
   function getTitan(id) {
     return getTitans()[id];
   }
@@ -164,15 +110,17 @@
     return player[cqKey];
   }
 
-  function getShops() {
-    const IM_0 = getProtoFn(selfGame["haxe.ds.IntMap"], 0);
-    const cq = getCq();
-    const shopsMapKey = findFieldIndexByClass(cq, "haxe.ds.IntMap")?.key;
-    return cq[shopsMapKey][IM_0];
-  }
+  // id 13 — магазин артефактов титанов, подтверждён через zq() === "LIB_SHOP_DESC_13".
+  // Это серверная конфигурация магазинов, а не обфусцированное имя — если игра
+  // когда-нибудь переназначит id, здесь понадобится обновить только эту константу.
+  const TITAN_ARTIFACT_SHOP_ID = 13;
+
+  // cq.J1(id) — прямой метод получения записи магазина по id (обычный метод,
+  // без метаданных в __properties__, поэтому обращаемся по букве напрямую,
+  // как и qqj/Llh/R6e/DWe выше)
   function getShop(id) {
-    const shops = getShops();
-    const entry = shops?.[id];
+    const cq = getCq();
+    const entry = cq.J1(id);
     if (!entry) return undefined;
     const shopKey = findFieldIndexByClass(
       entry,
@@ -191,7 +139,7 @@
     return DataStorage[artifactStorageKey].ob(String(artifactId));
   }
 
-  // открыть попап просмотра артефактов титана
+  // Открывает попап просмотра артефактов титана напрямую по id титана
   function goTitanArtifact(titanId) {
     const player = getPlayer();
     const titan = getTitan(titanId);
@@ -207,13 +155,19 @@
     new TitanArtifactsPopupMediator(player, null, titan.$A).open(event);
   }
 
-  // сразу открыть диалог покупки конкретного артефакта у торговца
+  // Доводит сразу до диалога покупки конкретного артефакта у торговца.
+  // qqj/Llh/R6e/DWe/kMc/$A/H — обычные методы и поля (не Haxe-свойства с
+  // именем в __properties__), поэтому у них нет позиционно-независимого
+  // способа резолвинга — обращаемся напрямую по буквам, актуальным для
+  // текущей версии игры. Если после очередного обновления игры что-то из
+  // этого перестанет работать — см. spyAllMethods() в истории переписки:
+  // подслушать реальные вызовы вживую надёжнее, чем гадать по позиции.
   function goTitanArtifactMerchant(artifactId, titanId) {
     const cq = getCq();
     const artifactDesc = getArtifactDescription(artifactId);
     const titan = getTitan(titanId);
     if (!artifactDesc || !titan) {
-      console.error("Artifact or titan not found");
+      console.error("Artifact or titan not found", artifactId, titanId);
       return;
     }
 
@@ -228,7 +182,7 @@
     if (targetSlot.kMc == null) targetSlot.kMc = {};
     targetSlot.kMc.titanId = titan.$A.H();
 
-    const shop = getShop(13);
+    const shop = getShop(TITAN_ARTIFACT_SHOP_ID);
     if (!shop) {
       console.error("Titan artifact merchant shop not found");
       return;
@@ -239,6 +193,11 @@
     ]();
     cq.R6e(shop, targetSlot, event);
   }
+
+  // inline onClick в сгенерированном HTML выполняется в глобальном контексте
+  // страницы, а не внутри этого замыкания — поэтому функции нужно явно
+  // выставить на window, иначе будет "goTitanArtifact is not defined"
+  window.goTitanArtifact = goTitanArtifact;
   window.goTitanArtifactMerchant = goTitanArtifactMerchant;
 
   async function res() {
@@ -290,7 +249,8 @@
           const tts = titans
             .map(
               (t) =>
-                `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>`,
+                `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>` +
+                ` (<a href="#" onClick="goTitanArtifactMerchant(${id},${t})">купить</a>)`,
             )
             .join(", ");
           ht.push(`<li>${art_name}: ${need} (${tts})</li>`);

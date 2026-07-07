@@ -110,6 +110,136 @@
     ]();
     new TitanArtifactsPopupMediator(player, null, titan.$A).open(event);
   }
+  window.goTitanArtifact = goTitanArtifact;
+  // --- базовые хелперы ---
+  function getFnP(classF, nameF) {
+    return Object.entries(classF.__properties__).find((e) => e[1] == nameF)[0];
+  }
+  function getProtoFn(classF, nF) {
+    return Object.keys(classF.prototype)[nF];
+  }
+  function findFieldIndexByClass(instance, className) {
+    const proto = Object.getPrototypeOf(instance);
+    const keys = Object.keys(proto);
+    for (let i = 0; i < keys.length; i++) {
+      try {
+        if (instance[keys[i]]?.__class__?.j === className) {
+          return { index: i, key: keys[i] };
+        }
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  function getPlayer() {
+    const GM_0 = getProtoFn(Game.GameModel, 0);
+    const instance = getFnP(Game.GameModel, "get_instance");
+    return Game.GameModel[instance]()[GM_0];
+  }
+
+  function getTitans() {
+    const IM_0 = getProtoFn(selfGame["haxe.ds.IntMap"], 0);
+    const player = getPlayer();
+    const titanDataKey = findFieldIndexByClass(
+      player,
+      "game.model.user.hero.PlayerTitanData",
+    )?.key;
+    const playerTitanData = player[titanDataKey];
+    const titanMapKey = findFieldIndexByClass(
+      playerTitanData,
+      "haxe.ds.IntMap",
+    )?.key;
+    return playerTitanData[titanMapKey][IM_0];
+  }
+  function getTitan(id) {
+    return getTitans()[id];
+  }
+
+  function getCq() {
+    const player = getPlayer();
+    const cqKey = findFieldIndexByClass(
+      player,
+      "game.model.user.shop.PlayerShopData",
+    )?.key;
+    return player[cqKey];
+  }
+
+  function getShops() {
+    const IM_0 = getProtoFn(selfGame["haxe.ds.IntMap"], 0);
+    const cq = getCq();
+    const shopsMapKey = findFieldIndexByClass(cq, "haxe.ds.IntMap")?.key;
+    return cq[shopsMapKey][IM_0];
+  }
+  function getShop(id) {
+    const shops = getShops();
+    const entry = shops?.[id];
+    if (!entry) return undefined;
+    const shopKey = findFieldIndexByClass(
+      entry,
+      "game.data.storage.shop.StaticSlotsShopDescription",
+    )?.key;
+    return shopKey ? entry[shopKey] : undefined;
+  }
+
+  function getArtifactDescription(artifactId) {
+    const DataStorage = selfGame["game.data.storage.DataStorage"];
+    const artifactStorageKey = Object.keys(DataStorage).find(
+      (k) =>
+        DataStorage[k]?.__class__?.j ===
+        "game.data.storage.artifact.TitanArtifactStorage",
+    );
+    return DataStorage[artifactStorageKey].ob(String(artifactId));
+  }
+
+  // открыть попап просмотра артефактов титана
+  function goTitanArtifact(titanId) {
+    const player = getPlayer();
+    const titan = getTitan(titanId);
+    if (titan == null) {
+      console.error("Titan", titanId, "not found");
+      return;
+    }
+    const TitanArtifactsPopupMediator =
+      selfGame["game.mediator.gui.popup.artifacts.TitanArtifactsPopupMediator"];
+    const event = new selfGame[
+      "game.mediator.gui.popup.PopupStashEventParams"
+    ]();
+    new TitanArtifactsPopupMediator(player, null, titan.$A).open(event);
+  }
+
+  // сразу открыть диалог покупки конкретного артефакта у торговца
+  function goTitanArtifactMerchant(artifactId, titanId) {
+    const cq = getCq();
+    const artifactDesc = getArtifactDescription(artifactId);
+    const titan = getTitan(titanId);
+    if (!artifactDesc || !titan) {
+      console.error("Artifact or titan not found");
+      return;
+    }
+
+    let targetSlot = cq.qqj(artifactDesc);
+    if (targetSlot == null) targetSlot = cq.Llh(artifactDesc);
+    if (targetSlot == null) {
+      console.error("Slot for artifact", artifactId, "not found");
+      return;
+    }
+
+    targetSlot.DWe(true);
+    if (targetSlot.kMc == null) targetSlot.kMc = {};
+    targetSlot.kMc.titanId = titan.$A.H();
+
+    const shop = getShop(13);
+    if (!shop) {
+      console.error("Titan artifact merchant shop not found");
+      return;
+    }
+
+    const event = new selfGame[
+      "game.mediator.gui.popup.PopupStashEventParams"
+    ]();
+    cq.R6e(shop, targetSlot, event);
+  }
+  window.goTitanArtifactMerchant = goTitanArtifactMerchant;
 
   async function res() {
     return Caller.send(["titanGetAll", "inventoryGet"])

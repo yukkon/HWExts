@@ -2,15 +2,15 @@
 // @name         HWHTitanArtifacts
 // @namespace    http://tampermonkey.net/
 // @version      0.0.1
-// @description  Паказвае неабходную колькасць артыфактау для тытанау
+// @description  Паказвае колькасць артыфактау для титанау
 // @author       yukkon
-// @match   		 https://www.hero-wars.com/*
-// @match	       https://apps-1701433570146040.apps.fbsbx.com/*
+// @match		 https://www.hero-wars.com/*
+// @match	     https://apps-1701433570146040.apps.fbsbx.com/*
 // @icon         https://lh3.googleusercontent.com/a/ACg8ocI7HD7_lM6wzmL1Giq8A0gXjtlsiyMDXJx5sX8CmT5LX4NiJw2t=s315-c-no
 // @grant        none
-// @downloadURL  https://yukkon.github.io/HWExts/HWHTitanArtifacts.js
-// @updateURL    https://yukkon.github.io/HWExts/HWHTitanArtifacts.js
-// @homepage	   https://github.com/yukkon/HWExts
+// @downloadURL  https://yukkon.github.io/HWExts/HWHHandleConsumableUseLootBox.js
+// @updateURL    https://yukkon.github.io/HWExts/HWHHandleConsumableUseLootBox.js
+// @homepage	 https://github.com/yukkon/HWExts
 // ==/UserScript==
 
 (function () {
@@ -50,6 +50,66 @@
       document.styleSheets[document.styleSheets.length - 1].cssRules.length,
     );
   });
+
+  // --- базовые хелперы ---
+  function getFnP(classF, nameF) {
+    return Object.entries(classF.__properties__).find((e) => e[1] == nameF)[0];
+  }
+  function getProtoFn(classF, nF) {
+    return Object.keys(classF.prototype)[nF];
+  }
+  function findFieldIndexByClass(instance, className) {
+    const proto = Object.getPrototypeOf(instance);
+    const keys = Object.keys(proto);
+    for (let i = 0; i < keys.length; i++) {
+      try {
+        if (instance[keys[i]]?.__class__?.j === className) {
+          return { index: i, key: keys[i] };
+        }
+      } catch (e) {}
+    }
+    return null;
+  }
+
+  function getPlayer() {
+    const GM_0 = getProtoFn(Game.GameModel, 0);
+    const instance = getFnP(Game.GameModel, "get_instance");
+    return Game.GameModel[instance]()[GM_0];
+  }
+
+  function getTitans() {
+    const IM_0 = getProtoFn(selfGame["haxe.ds.IntMap"], 0);
+    const player = getPlayer();
+    const titanDataKey = findFieldIndexByClass(
+      player,
+      "game.model.user.hero.PlayerTitanData",
+    )?.key;
+    const playerTitanData = player[titanDataKey];
+    const titanMapKey = findFieldIndexByClass(
+      playerTitanData,
+      "haxe.ds.IntMap",
+    )?.key;
+    return playerTitanData[titanMapKey][IM_0];
+  }
+
+  function getTitan(id) {
+    return getTitans()[id];
+  }
+
+  function goTitanArtifact(titanId) {
+    const player = getPlayer();
+    const titan = getTitan(titanId);
+    if (titan == null) {
+      console.error("Titan", titanId, "not found");
+      return;
+    }
+    const TitanArtifactsPopupMediator =
+      selfGame["game.mediator.gui.popup.artifacts.TitanArtifactsPopupMediator"];
+    const event = new selfGame[
+      "game.mediator.gui.popup.PopupStashEventParams"
+    ]();
+    new TitanArtifactsPopupMediator(player, null, titan.$A).open(event);
+  }
 
   async function res() {
     return Caller.send(["titanGetAll", "inventoryGet"])
@@ -98,7 +158,10 @@
         Object.entries(_arts).forEach(([id, { titans, need }]) => {
           const art_name = cheats.translate(`LIB_TITAN_ARTIFACT_NAME_${id}`);
           const tts = titans
-            .map((t) => cheats.translate(`LIB_HERO_NAME_${t}`))
+            .map(
+              (t) =>
+                `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>`,
+            )
             .join(", ");
           ht.push(`<li>${art_name}: ${need} (${tts})</li>`);
         });

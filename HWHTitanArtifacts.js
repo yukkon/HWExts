@@ -49,6 +49,10 @@
       ".result { text-align: initial; font-size: 16px; }",
       document.styleSheets[document.styleSheets.length - 1].cssRules.length,
     );
+    document.styleSheets[document.styleSheets.length - 1].insertRule(
+      ".result a { color: #ffcc00; text-decoration: underline; }",
+      document.styleSheets[document.styleSheets.length - 1].cssRules.length,
+    );
   });
 
   // --- базовые хелперы ---
@@ -260,17 +264,19 @@
       .then((_arts) => {
         const ht = [];
         ht.push("<ul class='result'>");
-        Object.entries(_arts).forEach(([id, { titans, need }]) => {
-          const art_name = cheats.translate(`LIB_TITAN_ARTIFACT_NAME_${id}`);
-          const tts = titans
-            .map(
-              (t) =>
-                `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>`,
-            )
-            .join(", ");
-          const buyLink = `<a href="#" onClick="goTitanArtifactMerchant(${id},${titans[0]})">${art_name}</a>`;
-          ht.push(`<li>${buyLink}: ${need} (${tts})</li>`);
-        });
+        Object.entries(_arts)
+          .sort(([, a], [, b]) => a.need - b.need)
+          .forEach(([id, { titans, need }]) => {
+            const art_name = cheats.translate(`LIB_TITAN_ARTIFACT_NAME_${id}`);
+            const tts = titans
+              .map(
+                (t) =>
+                  `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>`,
+              )
+              .join(", ");
+            const buyLink = `<a href="#" onClick="goTitanArtifactMerchant(${id},${titans[0]})">${art_name}</a>`;
+            ht.push(`<li>${buyLink}: ${need} (${tts})</li>`);
+          });
         ht.push("</ul>");
         return ht.join("");
       });

@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         HWHTitanArtifacts
 // @namespace    http://tampermonkey.net/
-// @version      0.0.1
+// @version      0.0.2
 // @description  Паказвае колькасць артыфактау для титанау
 // @author       yukkon
 // @match		 https://www.hero-wars.com/*
 // @match	     https://apps-1701433570146040.apps.fbsbx.com/*
 // @icon         https://lh3.googleusercontent.com/a/ACg8ocI7HD7_lM6wzmL1Giq8A0gXjtlsiyMDXJx5sX8CmT5LX4NiJw2t=s315-c-no
 // @grant        none
-// @downloadURL  https://yukkon.github.io/HWExts/HWHHandleConsumableUseLootBox.js
-// @updateURL    https://yukkon.github.io/HWExts/HWHHandleConsumableUseLootBox.js
+// @downloadURL  https://yukkon.github.io/HWExts/HWHTitanArtifacts.js
+// @updateURL    https://yukkon.github.io/HWExts/HWHTitanArtifacts.js
 // @homepage	 https://github.com/yukkon/HWExts
 // ==/UserScript==
 
@@ -47,10 +47,6 @@
   Events.on("startGame", async () => {
     document.styleSheets[document.styleSheets.length - 1].insertRule(
       ".result { text-align: initial; font-size: 16px; }",
-      document.styleSheets[document.styleSheets.length - 1].cssRules.length,
-    );
-    document.styleSheets[document.styleSheets.length - 1].insertRule(
-      ".result a { color: #ffcc00; text-decoration: underline; }",
       document.styleSheets[document.styleSheets.length - 1].cssRules.length,
     );
   });
@@ -175,12 +171,14 @@
   }
 
   // Доводит сразу до диалога покупки конкретного артефакта у торговца.
-  // qqj/Llh/R6e/DWe/kMc/$A/H — обычные методы и поля (не Haxe-свойства с
+  // pqj/Mlh/S6e/EWe/kMc/$A/H — обычные методы и поля (не Haxe-свойства с
   // именем в __properties__), поэтому у них нет позиционно-независимого
   // способа резолвинга — обращаемся напрямую по буквам, актуальным для
-  // текущей версии игры. Если после очередного обновления игры что-то из
-  // этого перестанет работать — см. spyAllMethods() в истории переписки:
-  // подслушать реальные вызовы вживую надёжнее, чем гадать по позиции.
+  // текущей версии игры (сверено с оригиналом wll() в heroes.js: было
+  // qqj/Llh/R6e/DWe, стало pqj/Mlh/S6e/EWe после очередного обновления).
+  // Если после следующего обновления игры что-то из этого перестанет
+  // работать — см. spyAllMethods() в истории переписки: подслушать реальные
+  // вызовы вживую надёжнее, чем гадать по позиции.
   function goTitanArtifactMerchant(artifactId, titanId) {
     const cq = getCq();
     const artifactDesc = getArtifactDescription(artifactId);
@@ -190,14 +188,14 @@
       return;
     }
 
-    let targetSlot = cq.qqj(artifactDesc);
-    if (targetSlot == null) targetSlot = cq.Llh(artifactDesc);
+    let targetSlot = cq.pqj(artifactDesc);
+    if (targetSlot == null) targetSlot = cq.Mlh(artifactDesc);
     if (targetSlot == null) {
       console.error("Slot for artifact", artifactId, "not found");
       return;
     }
 
-    targetSlot.DWe(true);
+    targetSlot.EWe(true);
     if (targetSlot.kMc == null) targetSlot.kMc = {};
     targetSlot.kMc.titanId = titan.$A.H();
 
@@ -211,7 +209,7 @@
     const event = new selfGame[
       "game.mediator.gui.popup.PopupStashEventParams"
     ]();
-    cq.R6e(shop, targetSlot, event);
+    cq.S6e(shop, targetSlot, event);
   }
 
   // inline onClick в сгенерированном HTML выполняется в глобальном контексте

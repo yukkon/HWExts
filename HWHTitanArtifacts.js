@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHTitanArtifacts
 // @namespace    http://tampermonkey.net/
-// @version      0.0.2
+// @version      0.0.3
 // @description  Паказвае колькасць артыфактау для титанау
 // @author       yukkon
 // @match		 https://www.hero-wars.com/*
@@ -218,6 +218,69 @@
   window.goTitanArtifact = goTitanArtifact;
   window.goTitanArtifactMerchant = goTitanArtifactMerchant;
 
+  // --- прокачка узроуняу артыфактау (стихийная эсэнцыя / іншыя consumable) ---
+
+  // Максимальный доступный уровень в levels — учитываем, что это может быть
+  // как плотный массив, так и объект-словарь (Haxe IntMap), у которого нет
+  // .length, из-за чего Math.min(target, levels.length - 1) давал NaN и цикл
+  // прокачки вообще не выполнялся (отсюда ложное "всё уже максимум")
+  function getMaxLevelKey(levels) {
+    if (Array.isArray(levels)) return levels.length - 1;
+    const keys = Object.keys(levels)
+      .map(Number)
+      .filter((n) => !Number.isNaN(n));
+    return keys.length ? Math.max(...keys) : 0;
+  }
+
+  // Лічыць сумарную кошт прокачкі усіх артэфактау титанау з бягучага узроуню
+  // да максімальнага, даступнага у lib.data.titanArtifact.type[type].levels.
+  // Вяртае { category: { resId: amount } }.
+  function getArtifactLevelUpCost(titanGetAll) {
+    const totalCost = {};
+
+    Object.values(titanGetAll).forEach((titan) => {
+      titan.artifacts.forEach((titan_art, i) => {
+        const art_id = lib.data.titan[titan.id].artifacts[i];
+        const type = lib.data.titanArtifact.id[art_id].type;
+        const levels = lib.data.titanArtifact.type[type].levels;
+
+        const curLevel = titan_art.level ?? 0;
+        const target = getMaxLevelKey(levels);
+        if (curLevel >= target) return;
+
+        for (let lvl = curLevel + 1; lvl <= target; lvl++) {
+          const cost = levels[lvl]?.cost;
+          if (!cost) continue;
+          for (const category in cost) {
+            totalCost[category] = totalCost[category] || {};
+            if (category === "gold") {
+              totalCost[category] = (totalCost[category] || 0) + cost[category];
+            } else {
+              for (const resId in cost[category]) {
+                totalCost[category][resId] =
+                  (totalCost[category][resId] || 0) + cost[category][resId];
+              }
+            }
+          }
+        }
+      });
+    });
+
+    return totalCost;
+  }
+
+  // Зводзіць need/have/shortfall для аднаго "рэсурснага" блока
+  // (fragmentTitanArtifact для звёзд, consumable для узроуняу і г.д.)
+  function buildNeedHaveTable(needByResId, inventoryBucket) {
+    return Object.entries(needByResId)
+      .map(([resId, need]) => {
+        const have = inventoryBucket?.[resId] ?? 0;
+        const shortfall = Math.max(0, need - have);
+        return { resId, need, have, shortfall };
+      })
+      .sort((a, b) => b.shortfall - a.shortfall || b.need - a.need);
+  }
+
   async function res() {
     return Caller.send(["titanGetAll", "inventoryGet"])
       .then(([titanGetAll, inventoryGet]) => {
@@ -240,16 +303,12 @@
           return arts;
         });
 
-        return {
-          inventoryGet,
-          _arts: Object.groupBy(
+        const starsResult = Object.entries(
+          Object.groupBy(
             titanarts.flat().filter((a) => a.need > 0),
             ({ id }) => id,
           ),
-        };
-      })
-      .then(({ inventoryGet, _arts }) => {
-        return Object.entries(_arts).reduce((acc, [id, arts]) => {
+        ).reduce((acc, [id, arts]) => {
           acc[id] = {
             titans: arts.map((a) => a.titan),
             need:
@@ -258,11 +317,28 @@
           };
           return acc;
         }, {});
+
+        // --- блок 2: прокачка узроуняу (consumable) ---
+        const levelUpCost = getArtifactLevelUpCost(titanGetAll);
+        const levelUpTables = Object.entries(levelUpCost).reduce(
+          (acc, [category, needByResId]) => {
+            acc[category] = buildNeedHaveTable(
+              needByResId,
+              inventoryGet[category],
+            );
+            return acc;
+          },
+          {},
+        );
+
+        return { starsResult, levelUpTables };
       })
-      .then((_arts) => {
+      .then(({ starsResult, levelUpTables }) => {
         const ht = [];
+
+        // --- вывад: эвалюцыя (звёзды) — без изменений ---
         ht.push("<ul class='result'>");
-        Object.entries(_arts)
+        Object.entries(starsResult)
           .sort(([, a], [, b]) => a.need - b.need)
           .forEach(([id, { titans, need }]) => {
             const art_name = cheats.translate(`LIB_TITAN_ARTIFACT_NAME_${id}`);
@@ -276,6 +352,30 @@
             ht.push(`<li>${buyLink}: ${need} (${tts})</li>`);
           });
         ht.push("</ul>");
+
+        // --- вывад: прокачка узроуняу ---
+        ht.push("<hr><b>Прокачка да максімальнага узроуню:</b>");
+        const categories = Object.keys(levelUpTables);
+        if (categories.length === 0) {
+          ht.push(
+            "<ul class='result'><li>Усе артыфакты ужо максімальнага узроуню.</li></ul>",
+          );
+        }
+        categories.forEach((category) => {
+          ht.push(`<div><i>${category}</i></div><ul class='result'>`);
+          levelUpTables[category].forEach(
+            ({ resId, need, have, shortfall }) => {
+              const shortStr = shortfall
+                ? ` <span style="color:red">(не хапае ${shortfall})</span>`
+                : ` <span style="color:green">(хапае)</span>`;
+              ht.push(
+                `<li>#${resId}: трэба ${need} / ёсць ${have}${shortStr}</li>`,
+              );
+            },
+          );
+          ht.push("</ul>");
+        });
+
         return ht.join("");
       });
   }

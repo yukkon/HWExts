@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHTitanArtifacts
 // @namespace    http://tampermonkey.net/
-// @version      0.0.3
+// @version      0.0.7
 // @description  Паказвае колькасць артыфактау для титанау
 // @author       yukkon
 // @match		 https://www.hero-wars.com/*
@@ -252,10 +252,10 @@
           const cost = levels[lvl]?.cost;
           if (!cost) continue;
           for (const category in cost) {
-            totalCost[category] = totalCost[category] || {};
             if (category === "gold") {
               totalCost[category] = (totalCost[category] || 0) + cost[category];
             } else {
+              totalCost[category] = totalCost[category] || {};
               for (const resId in cost[category]) {
                 totalCost[category][resId] =
                   (totalCost[category][resId] || 0) + cost[category][resId];
@@ -282,8 +282,8 @@
   }
 
   async function res() {
-    return Caller.send(["titanGetAll", "inventoryGet"])
-      .then(([titanGetAll, inventoryGet]) => {
+    return Caller.send(["titanGetAll", "inventoryGet", "userGetInfo"])
+      .then(([titanGetAll, inventoryGet, userGetInfo]) => {
         const titanarts = Object.values(titanGetAll).map((titan) => {
           const arts = titan.artifacts.map((titan_art, i) => {
             const art_id = lib.data.titan[titan.id].artifacts[i];
@@ -322,10 +322,16 @@
         const levelUpCost = getArtifactLevelUpCost(titanGetAll);
         const levelUpTables = Object.entries(levelUpCost).reduce(
           (acc, [category, needByResId]) => {
-            acc[category] = buildNeedHaveTable(
-              needByResId,
-              inventoryGet[category],
-            );
+            if (category === "gold") {
+              const have = userGetInfo.gold ?? 0;
+              const shortfall = Math.max(0, needByResId - have);
+              acc[category] = { needByResId, have, shortfall };
+            } else {
+              acc[category] = buildNeedHaveTable(
+                needByResId,
+                inventoryGet[category],
+              );
+            }
             return acc;
           },
           {},
@@ -360,22 +366,31 @@
           ht.push(
             "<ul class='result'><li>Усе артыфакты ужо максімальнага узроуню.</li></ul>",
           );
-        }
-        categories.forEach((category) => {
-          ht.push(`<div><i>${category}</i></div><ul class='result'>`);
-          levelUpTables[category].forEach(
-            ({ resId, need, have, shortfall }) => {
-              const shortStr = shortfall
-                ? ` <span style="color:red">(не хапае ${shortfall})</span>`
+        } else {
+          ht.push("<ul class='result'>");
+          categories.forEach((category) => {
+            if (category === "gold") {
+              const shortStr = levelUpTables[category].shortfall
+                ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(levelUpTables[category].shortfall)})</span>`
                 : ` <span style="color:green">(хапае)</span>`;
               ht.push(
-                `<li>#${resId}: трэба ${need} / ёсць ${have}${shortStr}</li>`,
+                `<li>Золата: трэба ${new Intl.NumberFormat().format(levelUpTables[category].needByResId)} / ёсць ${new Intl.NumberFormat().format(levelUpTables[category].have)}${shortStr}</li>`,
               );
-            },
-          );
+            } else {
+              levelUpTables[category].forEach(
+                ({ resId, need, have, shortfall }) => {
+                  const shortStr = shortfall
+                    ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(shortfall)})</span>`
+                    : ` <span style="color:green">(хапае)</span>`;
+                  ht.push(
+                    `<li>${cheats.translate(`LIB_${category.toUpperCase()}_NAME_${resId}`)}: трэба ${new Intl.NumberFormat().format(need)} / ёсць ${new Intl.NumberFormat().format(have)}${shortStr}</li>`,
+                  );
+                },
+              );
+            }
+          });
           ht.push("</ul>");
-        });
-
+        }
         return ht.join("");
       });
   }

@@ -1,15 +1,15 @@
 // ==UserScript==
-// @name         HWHAdventurePaths
-// @namespace    http://tampermonkey.net/
-// @version      0.0.3
-// @description  Разлічвае аптымальныя маршруты па карце (3 гульца супраць монстрау)
-// @author       yukkon
-// @match		 https://www.hero-wars.com/*
-// @match	     https://apps-1701433570146040.apps.fbsbx.com/*
-// @grant        none
-// @downloadURL  https://yukkon.github.io/HWExts/HWHAdventurePaths.js
-// @updateURL    https://yukkon.github.io/HWExts/HWHAdventurePaths.js
-// @homepage	 https://github.com/yukkon/HWExts
+// @name          HWHAdventurePaths
+// @namespace     http://tampermonkey.net/
+// @version       0.0.4
+// @description   Разлічвае аптымальныя маршруты па карце (3 гульца супраць монстрау)
+// @author        yukkon
+// @match         https://www.hero-wars.com/*
+// @match         https://apps-1701433570146040.apps.fbsbx.com/*
+// @grant         none
+// @downloadURL   https://yukkon.github.io/HWExts/HWHAdventurePaths.js
+// @updateURL     https://yukkon.github.io/HWExts/HWHAdventurePaths.js
+// @homepage      https://github.com/yukkon/HWExts
 // ==/UserScript==
 
 (function () {
@@ -33,10 +33,22 @@
   const { popup } = HWHFuncs;
   const { othersPopupButtons } = HWHData;
 
-  // Мінімальная сума ачкоу (pointsFarmed), якую трэба набраць за увесь
-  // забег (ужо зафармленыя + тыя, што плануецца захапіць новымі
-  // маршрутамі). Пакуль канстанта — пры неабходнасці проста памяняй лічбу.
-  const POINTS_THRESHOLD = 700;
+  // Парог ачкоу НЕ аднолькавы для усіх карт — ён вызначаецца тым, які
+  // ключ ёсць у state.rewards.points (самы вялікі тыр узнагароды).
+  // Раней тут была захардкожаная канстанта 700 (падгледжаная на карце
+  // adv_strongford_3pl_hell), але на іншых картах (напр.
+  // adv_angels_3pl_hell) верхні тыр можа быць 640 і менш — з
+  // канстантай 700 салвер памылкова лічыу парог недасягальным, хаця
+  // фактычна ён дасягаўся (пацверджана на жывых дадзеных res4→res5:
+  // максімум 660 ачкоу, тыр 640, рэальна набрана 640).
+  // Фолбэк 700 застаецца на выпадак, калі rewards.points раптам пусты.
+  function getPointsThreshold(state) {
+    const tiers = state?.rewards?.points
+      ? Object.keys(state.rewards.points).map(Number)
+      : [];
+    if (tiers.length === 0) return 700; // fallback, ПРОВЕРИТЬ
+    return Math.max(...tiers);
+  }
 
   othersPopupButtons.push({
     msg: "Аптымальныя шляхі",
@@ -209,6 +221,8 @@
     const distFromTarget = {};
     allTargets.forEach((t) => (distFromTarget[t] = bfsDist(adj, t)));
 
+    const pointsThreshold = getPointsThreshold(state);
+
     // Абавязковыя пункты — шукаем па lastBoss === true (а не па індэксе,
     // ён не стабільны). Вылічваецца тут, бо state прыходзіць жывы, кожны
     // раз наноуа праз Caller.send.
@@ -228,13 +242,13 @@
     // computeDefaultNodeValue вышэй).
     const pointsBaseline = computePointsBaseline(state.nodes);
     const defaultNodeValue = computeDefaultNodeValue(state.nodes);
-    const pointsNeeded = Math.max(0, POINTS_THRESHOLD - pointsBaseline);
+    const pointsNeeded = Math.max(0, pointsThreshold - pointsBaseline);
 
     // Максімальна магчымая сума ачкоу, калі б удалося захапіць УСЕ яшчэ
     // не занятыя баявыя пункты — для праверкі дасягальнасці парога.
     const maxPossiblePoints =
       pointsBaseline + allTargets.length * defaultNodeValue;
-    const pointsThresholdUnreachable = maxPossiblePoints < POINTS_THRESHOLD;
+    const pointsThresholdUnreachable = maxPossiblePoints < pointsThreshold;
 
     // Заувага: усмацненні (state.buffs) свядома НЕ ўлічваюцца салверам.
     // Сервер дазваляе атакаваць забафаваны пункт, парадак захопу гульцоў
@@ -299,7 +313,7 @@
           (a, id) => a + (nodeById[id]?.pointsFarmed || defaultNodeValue),
           0,
         );
-      const pointsOk = totalPoints >= POINTS_THRESHOLD;
+      const pointsOk = totalPoints >= pointsThreshold;
       const bestPointsOk =
         best &&
         pointsBaseline +
@@ -307,7 +321,7 @@
             (a, id) => a + (nodeById[id]?.pointsFarmed || defaultNodeValue),
             0,
           ) >=
-          POINTS_THRESHOLD;
+          pointsThreshold;
 
       const better =
         !best ||
@@ -337,6 +351,7 @@
       unreachable,
       pointsBaseline,
       pointsNeeded,
+      pointsThreshold,
       pointsThresholdUnreachable,
       defaultNodeValue,
     };
@@ -350,6 +365,7 @@
       requiredNodes,
       unreachable,
       pointsBaseline,
+      pointsThreshold,
       pointsThresholdUnreachable,
       defaultNodeValue,
     } = solve(state);
@@ -372,15 +388,15 @@
     }
     if (pointsThresholdUnreachable) {
       ht.push(
-        `<p style="color:red"><b>Увага: нават захапіушы усе даступныя пункты, парог ${POINTS_THRESHOLD} ачкоу не дасягаецца (максімум: ${pointsBaseline + allTargets.length * defaultNodeValue}).</b></p>`,
+        `<p style="color:red"><b>Увага: нават захапіушы усе даступныя пункты, парог ${pointsThreshold} ачкоу не дасягаецца (максімум: ${pointsBaseline + allTargets.length * defaultNodeValue}).</b></p>`,
       );
     } else if (!best.pointsOk) {
       ht.push(
-        `<p style="color:red"><b>Увага: не удалося набраць ${POINTS_THRESHOLD} ачкоу (атрымана: ${best.totalPoints}) — паспрабуй павялічыць колькасць спробаў.</b></p>`,
+        `<p style="color:red"><b>Увага: не удалося набраць ${pointsThreshold} ачкоу (атрымана: ${best.totalPoints}) — паспрабуй павялічыць колькасць спробаў.</b></p>`,
       );
     } else {
       ht.push(
-        `<p style="color:green"><b>Ачкі: ${best.totalPoints} / ${POINTS_THRESHOLD} (парог дасягнуты)</b></p>`,
+        `<p style="color:green"><b>Ачкі: ${best.totalPoints} / ${pointsThreshold} (парог дасягнуты)</b></p>`,
       );
     }
     ht.push(

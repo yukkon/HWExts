@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name          HWHAdventurePaths
 // @namespace     http://tampermonkey.net/
-// @version       0.0.4
+// @version       0.0.5
 // @description   Разлічвае аптымальныя маршруты па карце (3 гульца супраць монстрау)
 // @author        yukkon
 // @match         https://www.hero-wars.com/*
@@ -81,6 +81,18 @@
     return n && n.type === "TYPE_COMBAT" && n.state === "occupied";
   }
 
+  // Крыніцы буфа для канкрэтнага пункта (напр. боса): усе from_id
+  // з state.buffs, дзе to_id === nodeId. Выкарыстоуваецца толькі для
+  // жорсткай блакіроукі атакі боса (гл. "unlocked" ніжэй) — на іншыя
+  // пункты гэта правіла НЕ распаусюджваецца (баффы звычайных мэт
+  // сервер дазваляе атакаваць свабодна, гл. каментар вышэй пра
+  // "усмацненні свядома не улічваюцца").
+  function getBuffSourceIds(state, nodeId) {
+    return (state.buffs || [])
+      .filter((b) => b.to_id === nodeId)
+      .map((b) => b.from_id);
+  }
+
   // Ацэнка "кошту" пункта ў ачках. Для ужо зафармленых (state: "empty")
   // кошт вядомы дакладна — гэта n.pointsFarmed. Для яшчэ не захопленых
   // (state: "occupied") гульнявы кліент дае pointsFarmed: 0 — рэальны
@@ -151,9 +163,11 @@
     allTargets,
     distFromTarget,
     requiredSet,
+    bossBuffSources,
     start,
     turns,
     covered,
+    unlocked,
     rng,
     jitterScale,
   ) {
@@ -163,12 +177,30 @@
     const visitedOwn = new Set([cur]);
     const newly = new Set();
     const localCovered = new Set(covered);
+    // Наведаныя (разблакіраваныя) пункты — скразны набор паміж гульцамі,
+    // патрэбны толькі для праверкі "усе крыніцы буфа боса ужо узятыя".
+    // Стартавы пункт гульца лічыцца наведаным адразу.
+    const localUnlocked = new Set(unlocked);
+    localUnlocked.add(cur);
 
     while (remaining > 0) {
       const neighbors = Array.from(adj[cur] || []);
       if (neighbors.length === 0) break;
       const candidates = [];
       for (const nb of neighbors) {
+        // Жорсткая блакіроука: калі сусед — бос (яшчэ occupied) пад
+        // буфам, і не усе крыніцы гэтага буфа яшчэ разблакіраваны
+        // (наведаныя любым гульцом раней ці у гэтым жа праходзе) —
+        // атака боса пакуль недапушчальная, кандыдат цалкам
+        // выключаецца з разгляду на гэтым кроку.
+        const bossSources = bossBuffSources.get(nb);
+        if (bossSources && bossSources.size > 0) {
+          const allSourcesUnlocked = Array.from(bossSources).every((sid) =>
+            localUnlocked.has(sid),
+          );
+          if (!allSourcesUnlocked) continue;
+        }
+
         const nbIsNewTarget = isTarget(nodeById, nb) && !localCovered.has(nb);
 
         let score = 0;
@@ -202,13 +234,14 @@
       cur = candidates[0].nb;
       path.push(cur);
       visitedOwn.add(cur);
+      localUnlocked.add(cur);
       remaining -= 1;
       if (isTarget(nodeById, cur) && !localCovered.has(cur)) {
         localCovered.add(cur);
         newly.add(cur);
       }
     }
-    return { path, newly };
+    return { path, newly, unlockedAfter: localUnlocked };
   }
 
   function solve(state, attempts = 20000) {
@@ -250,10 +283,28 @@
       pointsBaseline + allTargets.length * defaultNodeValue;
     const pointsThresholdUnreachable = maxPossiblePoints < pointsThreshold;
 
-    // Заувага: усмацненні (state.buffs) свядома НЕ ўлічваюцца салверам.
-    // Сервер дазваляе атакаваць забафаваны пункт, парадак захопу гульцоў
-    // ні на што не уплывае — важны толькі сам маршрут (пакрыцце + бос +
-    // парог ачкоу), а не тое, у якой паслядоунасці хто ходзіць.
+    // Заувага: усмацненні (state.buffs) НЕ ULічваюцца салверам для
+    // звычайных мэт — сервер дазваляе атакаваць забафаваны пункт
+    // свабодна. ВЫКЛЮЧЭННЕ (дададзена пазней): для боса (lastBoss)
+    // дзейнічае жорсткае правіла — калі на боса накіраваны актыуны буф
+    // (state.buffs, to_id === бос), атакаваць яго нельга, пакуль УСЕ
+    // крыніцы гэтага буфа (from_id) не будуць наведаны хоць адным
+    // гульцом. Прычына: гульцы хочуць спачатку вызваліць пункты, якія
+    // даюць буф боса, а толькі потым ісці на самога боса.
+    const bossBuffSources = new Map();
+    requiredNodes.forEach((id) => {
+      bossBuffSources.set(id, new Set(getBuffSourceIds(state, id)));
+    });
+
+    // Пачатковае мноства "разблакіраваных" (наведаных) пунктаў — усе
+    // пункты, якія ужо НЕ occupied да старту сесіі (зачышчаны раней),
+    // лічацца наведанымі адразу, чакаць іх наведвання у бягучым
+    // разліку не трэба (аналагічна ранейшаму падыходу з unlocked для
+    // звычайных буфаў, гл. вядомыя баги вышэй).
+    const initialUnlocked = new Set(
+      state.nodes.filter((n) => n.state !== "occupied").map((n) => n.id),
+    );
+
     const players = Object.values(state.users).map((u) => ({
       id: u.id,
       name: u.user.name || u.id,
@@ -285,21 +336,25 @@
       }
 
       const covered = new Set();
+      let unlockedShared = new Set(initialUnlocked);
       const result = {};
       for (const p of order) {
-        const { path, newly } = randomGreedyPath(
+        const { path, newly, unlockedAfter } = randomGreedyPath(
           adj,
           nodeById,
           allTargets,
           distFromTarget,
           requiredSet,
+          bossBuffSources,
           p.start,
           p.turns,
           covered,
+          unlockedShared,
           rng,
           jitterScale,
         );
         newly.forEach((x) => covered.add(x));
+        unlockedShared = unlockedAfter;
         result[p.id] = { path, newly: Array.from(newly) };
       }
 
@@ -334,6 +389,7 @@
       if (better) {
         best = {
           covered: new Set(covered),
+          unlocked: new Set(unlockedShared),
           result,
           attempt,
           requiredOk,
@@ -354,6 +410,7 @@
       pointsThreshold,
       pointsThresholdUnreachable,
       defaultNodeValue,
+      bossBuffSources,
     };
   }
 
@@ -368,8 +425,27 @@
       pointsThreshold,
       pointsThresholdUnreachable,
       defaultNodeValue,
+      bossBuffSources,
     } = solve(state);
     const uncovered = allTargets.filter((t) => !best.covered.has(t));
+
+    // Дыягностыка: калі бос абавязковы, але не захоплены — праверым, ці
+    // прычына у нявзятых крыніцах яго буфа (жорсткая блакіроука), каб
+    // паказаць гульцу канкрэтную прычыну, а не проста "не атрымалася".
+    const bossBuffWarnings = [];
+    requiredNodes.forEach((rid) => {
+      const sources = bossBuffSources.get(rid);
+      if (sources && sources.size > 0) {
+        const missing = Array.from(sources).filter(
+          (sid) => !best.unlocked.has(sid),
+        );
+        if (missing.length) {
+          bossBuffWarnings.push(
+            `Бос ${rid}: не узятыя крыніцы буфа (${missing.join(", ")}) — атака боса заблакіравана, пакуль яны не захопленыя.`,
+          );
+        }
+      }
+    });
 
     const ht = [];
     ht.push("<div class='result'>");
@@ -381,6 +457,7 @@
       ht.push(
         `<p style="color:red"><b>Увага: салвер не знайшоу шлях, які захоплівае усе абавязковыя пункты (${requiredNodes.join(", ")}) — паспрабуй павялічыць колькасць спробаў.</b></p>`,
       );
+      bossBuffWarnings.forEach((w) => ht.push(`<p style="color:red">${w}</p>`));
     } else if (requiredNodes.length) {
       ht.push(
         `<p style="color:green"><b>Абавязковыя пункты захопленыя: ${requiredNodes.join(", ")}</b></p>`,

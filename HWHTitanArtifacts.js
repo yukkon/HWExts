@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHTitanArtifacts
 // @namespace    http://tampermonkey.net/
-// @version      0.0.7
+// @version      0.0.8
 // @description  Паказвае колькасць артыфактау для титанау
 // @author       yukkon
 // @match		 https://www.hero-wars.com/*
@@ -269,6 +269,51 @@
     return totalCost;
   }
 
+  // Лічыць сумарную кошт прокачкі усіх абліччау (skins) титанау з бягучага
+  // узроуню да максімальнага, даступнага у skin.statData.levels.
+  // Бібліятэчныя дадзеныя аблічча — lib.data.skin, фільтруем па heroId
+  // тытана (Object.values(lib.data.skin).filter(s => s.heroId === titan.id)).
+  // Бягучы узровень аблічча ляжыць у titan.skins[skinId] (з titanGetAll);
+  // калі аблічча яшчэ не сустракаецца у гэтым аб'екце, лічым яго узровень 0
+  // (аналагічна titan_art.level ?? 0 для артэфактау).
+  // Вяртае { category: { resId: amount } }.
+  function getSkinLevelUpCost(titanGetAll) {
+    const totalCost = {};
+
+    Object.values(titanGetAll).forEach((titan) => {
+      const skins = Object.values(lib.data.skin).filter(
+        (s) => s.heroId === titan.id,
+      );
+
+      skins.forEach((skin) => {
+        const levels = skin.statData?.levels;
+        if (!levels) return;
+
+        const curLevel = titan.skins?.[skin.id] ?? 0;
+        const target = getMaxLevelKey(levels);
+        if (curLevel >= target) return;
+
+        for (let lvl = curLevel + 1; lvl <= target; lvl++) {
+          const cost = levels[lvl]?.cost;
+          if (!cost) continue;
+          for (const category in cost) {
+            if (category === "gold") {
+              totalCost[category] = (totalCost[category] || 0) + cost[category];
+            } else {
+              totalCost[category] = totalCost[category] || {};
+              for (const resId in cost[category]) {
+                totalCost[category][resId] =
+                  (totalCost[category][resId] || 0) + cost[category][resId];
+              }
+            }
+          }
+        }
+      });
+    });
+
+    return totalCost;
+  }
+
   // Зводзіць need/have/shortfall для аднаго "рэсурснага" блока
   // (fragmentTitanArtifact для звёзд, consumable для узроуняу і г.д.)
   function buildNeedHaveTable(needByResId, inventoryBucket) {
@@ -337,9 +382,28 @@
           {},
         );
 
-        return { starsResult, levelUpTables };
+        // --- блок 3: прокачка абліччау (skins) ---
+        const skinUpCost = getSkinLevelUpCost(titanGetAll);
+        const skinUpTables = Object.entries(skinUpCost).reduce(
+          (acc, [category, needByResId]) => {
+            if (category === "gold") {
+              const have = userGetInfo.gold ?? 0;
+              const shortfall = Math.max(0, needByResId - have);
+              acc[category] = { needByResId, have, shortfall };
+            } else {
+              acc[category] = buildNeedHaveTable(
+                needByResId,
+                inventoryGet[category],
+              );
+            }
+            return acc;
+          },
+          {},
+        );
+
+        return { starsResult, levelUpTables, skinUpTables };
       })
-      .then(({ starsResult, levelUpTables }) => {
+      .then(({ starsResult, levelUpTables, skinUpTables }) => {
         const ht = [];
 
         // --- вывад: эвалюцыя (звёзды) — без изменений ---
@@ -391,6 +455,40 @@
           });
           ht.push("</ul>");
         }
+
+        // --- вывад: прокачка абліччау (skins) ---
+        ht.push("<hr><b>Прокачка абліччау да максімальнага узроуню:</b>");
+        const skinCategories = Object.keys(skinUpTables);
+        if (skinCategories.length === 0) {
+          ht.push(
+            "<ul class='result'><li>Усе абліччы ужо максімальнага узроуню.</li></ul>",
+          );
+        } else {
+          ht.push("<ul class='result'>");
+          skinCategories.forEach((category) => {
+            if (category === "gold") {
+              const shortStr = skinUpTables[category].shortfall
+                ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(skinUpTables[category].shortfall)})</span>`
+                : ` <span style="color:green">(хапае)</span>`;
+              ht.push(
+                `<li>Золата: трэба ${new Intl.NumberFormat().format(skinUpTables[category].needByResId)} / ёсць ${new Intl.NumberFormat().format(skinUpTables[category].have)}${shortStr}</li>`,
+              );
+            } else {
+              skinUpTables[category].forEach(
+                ({ resId, need, have, shortfall }) => {
+                  const shortStr = shortfall
+                    ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(shortfall)})</span>`
+                    : ` <span style="color:green">(хапае)</span>`;
+                  ht.push(
+                    `<li>${cheats.translate(`LIB_${category.toUpperCase()}_NAME_${resId}`)}: трэба ${new Intl.NumberFormat().format(need)} / ёсць ${new Intl.NumberFormat().format(have)}${shortStr}</li>`,
+                  );
+                },
+              );
+            }
+          });
+          ht.push("</ul>");
+        }
+
         return ht.join("");
       });
   }

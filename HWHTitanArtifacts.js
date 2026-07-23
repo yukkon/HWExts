@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         HWHTitanArtifacts
 // @namespace    http://tampermonkey.net/
-// @version      0.0.8
+// @version      0.0.9
 // @description  Паказвае колькасць артыфактау для титанау
 // @author       yukkon
 // @match		 https://www.hero-wars.com/*
@@ -326,6 +326,35 @@
       .sort((a, b) => b.shortfall - a.shortfall || b.need - a.need);
   }
 
+  // Лічыць сумарны кошт набыцця ўсіх недастатковых фрагментаў артэфактаў
+  // (тых, што яшчэ патрэбны для максімальнай зорнасці), зыходзячы з
+  // lib.data.titanArtifact.id[artId].fragmentBuyCost — гэта кошт АДНАГО
+  // фрагмента, таму трэба множыць на колькасць недастаючых фрагментаў
+  // (starsResult[artId].need — ужо за вылікам таго, што ёсць у інвентары).
+  // Вяртае { category: { resId: amount } }, напр. { coin: { "18": 12000 } }.
+  function getFragmentBuyCost(starsResult) {
+    const totalCost = {};
+
+    Object.entries(starsResult).forEach(([artId, { need }]) => {
+      const fragmentsNeeded = Math.max(0, need);
+      if (fragmentsNeeded <= 0) return;
+
+      const buyCost = lib.data.titanArtifact.id[artId]?.fragmentBuyCost;
+      if (!buyCost) return;
+
+      for (const category in buyCost) {
+        totalCost[category] = totalCost[category] || {};
+        for (const resId in buyCost[category]) {
+          const perFragment = buyCost[category][resId];
+          totalCost[category][resId] =
+            (totalCost[category][resId] || 0) + perFragment * fragmentsNeeded;
+        }
+      }
+    });
+
+    return totalCost;
+  }
+
   async function res() {
     return Caller.send(["titanGetAll", "inventoryGet", "userGetInfo"])
       .then(([titanGetAll, inventoryGet, userGetInfo]) => {
@@ -363,7 +392,26 @@
           return acc;
         }, {});
 
-        // --- блок 2: прокачка узроуняу (consumable) ---
+        // --- блок 2: агульны кошт набыцця фрагментаў для максімальнай зорнасці ---
+        const fragmentBuyCost = getFragmentBuyCost(starsResult);
+        const fragmentCostTables = Object.entries(fragmentBuyCost).reduce(
+          (acc, [category, needByResId]) => {
+            if (category === "gold") {
+              const have = userGetInfo.gold ?? 0;
+              const shortfall = Math.max(0, needByResId - have);
+              acc[category] = { needByResId, have, shortfall };
+            } else {
+              acc[category] = buildNeedHaveTable(
+                needByResId,
+                inventoryGet[category],
+              );
+            }
+            return acc;
+          },
+          {},
+        );
+
+        // --- блок 3: прокачка узроуняу (consumable) ---
         const levelUpCost = getArtifactLevelUpCost(titanGetAll);
         const levelUpTables = Object.entries(levelUpCost).reduce(
           (acc, [category, needByResId]) => {
@@ -382,7 +430,7 @@
           {},
         );
 
-        // --- блок 3: прокачка абліччау (skins) ---
+        // --- блок 4: прокачка абліччау (skins) ---
         const skinUpCost = getSkinLevelUpCost(titanGetAll);
         const skinUpTables = Object.entries(skinUpCost).reduce(
           (acc, [category, needByResId]) => {
@@ -401,95 +449,134 @@
           {},
         );
 
-        return { starsResult, levelUpTables, skinUpTables };
+        return { starsResult, fragmentCostTables, levelUpTables, skinUpTables };
       })
-      .then(({ starsResult, levelUpTables, skinUpTables }) => {
-        const ht = [];
+      .then(
+        ({ starsResult, fragmentCostTables, levelUpTables, skinUpTables }) => {
+          const ht = [];
 
-        // --- вывад: эвалюцыя (звёзды) — без изменений ---
-        ht.push("<ul class='result'>");
-        Object.entries(starsResult)
-          .sort(([, a], [, b]) => a.need - b.need)
-          .forEach(([id, { titans, need }]) => {
-            const art_name = cheats.translate(`LIB_TITAN_ARTIFACT_NAME_${id}`);
-            const tts = titans
-              .map(
-                (t) =>
-                  `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>`,
-              )
-              .join(", ");
-            const buyLink = `<a href="#" onClick="goTitanArtifactMerchant(${id},${titans[0]})">${art_name}</a>`;
-            ht.push(`<li>${buyLink}: ${need} (${tts})</li>`);
-          });
-        ht.push("</ul>");
-
-        // --- вывад: прокачка узроуняу ---
-        ht.push("<hr><b>Прокачка да максімальнага узроуню:</b>");
-        const categories = Object.keys(levelUpTables);
-        if (categories.length === 0) {
-          ht.push(
-            "<ul class='result'><li>Усе артыфакты ужо максімальнага узроуню.</li></ul>",
-          );
-        } else {
+          // --- вывад: эвалюцыя (звёзды) — без изменений ---
           ht.push("<ul class='result'>");
-          categories.forEach((category) => {
-            if (category === "gold") {
-              const shortStr = levelUpTables[category].shortfall
-                ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(levelUpTables[category].shortfall)})</span>`
-                : ` <span style="color:green">(хапае)</span>`;
-              ht.push(
-                `<li>Золата: трэба ${new Intl.NumberFormat().format(levelUpTables[category].needByResId)} / ёсць ${new Intl.NumberFormat().format(levelUpTables[category].have)}${shortStr}</li>`,
+          Object.entries(starsResult)
+            .sort(([, a], [, b]) => a.need - b.need)
+            .forEach(([id, { titans, need }]) => {
+              const art_name = cheats.translate(
+                `LIB_TITAN_ARTIFACT_NAME_${id}`,
               );
-            } else {
-              levelUpTables[category].forEach(
-                ({ resId, need, have, shortfall }) => {
-                  const shortStr = shortfall
-                    ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(shortfall)})</span>`
-                    : ` <span style="color:green">(хапае)</span>`;
-                  ht.push(
-                    `<li>${cheats.translate(`LIB_${category.toUpperCase()}_NAME_${resId}`)}: трэба ${new Intl.NumberFormat().format(need)} / ёсць ${new Intl.NumberFormat().format(have)}${shortStr}</li>`,
-                  );
-                },
-              );
-            }
-          });
+              const tts = titans
+                .map(
+                  (t) =>
+                    `<a href="#" onClick="goTitanArtifact(${t})">${cheats.translate(`LIB_HERO_NAME_${t}`)}</a>`,
+                )
+                .join(", ");
+              const buyLink = `<a href="#" onClick="goTitanArtifactMerchant(${id},${titans[0]})">${art_name}</a>`;
+              ht.push(`<li>${buyLink}: ${need} (${tts})</li>`);
+            });
           ht.push("</ul>");
-        }
 
-        // --- вывад: прокачка абліччау (skins) ---
-        ht.push("<hr><b>Прокачка абліччау да максімальнага узроуню:</b>");
-        const skinCategories = Object.keys(skinUpTables);
-        if (skinCategories.length === 0) {
+          // --- вывад: агульны кошт набыцця фрагментаў для максімальнай зорнасці ---
           ht.push(
-            "<ul class='result'><li>Усе абліччы ужо максімальнага узроуню.</li></ul>",
+            "<hr><b>Агульны кошт фрагментаў для максімальнай зорнасці ўсіх артэфактаў:</b>",
           );
-        } else {
-          ht.push("<ul class='result'>");
-          skinCategories.forEach((category) => {
-            if (category === "gold") {
-              const shortStr = skinUpTables[category].shortfall
-                ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(skinUpTables[category].shortfall)})</span>`
-                : ` <span style="color:green">(хапае)</span>`;
-              ht.push(
-                `<li>Золата: трэба ${new Intl.NumberFormat().format(skinUpTables[category].needByResId)} / ёсць ${new Intl.NumberFormat().format(skinUpTables[category].have)}${shortStr}</li>`,
-              );
-            } else {
-              skinUpTables[category].forEach(
-                ({ resId, need, have, shortfall }) => {
-                  const shortStr = shortfall
-                    ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(shortfall)})</span>`
-                    : ` <span style="color:green">(хапае)</span>`;
-                  ht.push(
-                    `<li>${cheats.translate(`LIB_${category.toUpperCase()}_NAME_${resId}`)}: трэба ${new Intl.NumberFormat().format(need)} / ёсць ${new Intl.NumberFormat().format(have)}${shortStr}</li>`,
-                  );
-                },
-              );
-            }
-          });
-          ht.push("</ul>");
-        }
+          const fragmentCategories = Object.keys(fragmentCostTables);
+          if (fragmentCategories.length === 0) {
+            ht.push(
+              "<ul class='result'><li>Усе артэфакты ужо максімальнай зорнасці (фрагменты не патрэбны).</li></ul>",
+            );
+          } else {
+            ht.push("<ul class='result'>");
+            fragmentCategories.forEach((category) => {
+              if (category === "gold") {
+                const shortStr = fragmentCostTables[category].shortfall
+                  ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(fragmentCostTables[category].shortfall)})</span>`
+                  : ` <span style="color:green">(хапае)</span>`;
+                ht.push(
+                  `<li>Золата: трэба ${new Intl.NumberFormat().format(fragmentCostTables[category].needByResId)} / ёсць ${new Intl.NumberFormat().format(fragmentCostTables[category].have)}${shortStr}</li>`,
+                );
+              } else {
+                fragmentCostTables[category].forEach(
+                  ({ resId, need, have, shortfall }) => {
+                    const shortStr = shortfall
+                      ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(shortfall)})</span>`
+                      : ` <span style="color:green">(хапае)</span>`;
+                    ht.push(
+                      `<li>${cheats.translate(`LIB_${category.toUpperCase()}_NAME_${resId}`)}: трэба ${new Intl.NumberFormat().format(need)} / ёсць ${new Intl.NumberFormat().format(have)}${shortStr}</li>`,
+                    );
+                  },
+                );
+              }
+            });
+            ht.push("</ul>");
+          }
 
-        return ht.join("");
-      });
+          // --- вывад: прокачка узроуняу ---
+          ht.push("<hr><b>Прокачка да максімальнага узроуню:</b>");
+          const categories = Object.keys(levelUpTables);
+          if (categories.length === 0) {
+            ht.push(
+              "<ul class='result'><li>Усе артыфакты ужо максімальнага узроуню.</li></ul>",
+            );
+          } else {
+            ht.push("<ul class='result'>");
+            categories.forEach((category) => {
+              if (category === "gold") {
+                const shortStr = levelUpTables[category].shortfall
+                  ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(levelUpTables[category].shortfall)})</span>`
+                  : ` <span style="color:green">(хапае)</span>`;
+                ht.push(
+                  `<li>Золата: трэба ${new Intl.NumberFormat().format(levelUpTables[category].needByResId)} / ёсць ${new Intl.NumberFormat().format(levelUpTables[category].have)}${shortStr}</li>`,
+                );
+              } else {
+                levelUpTables[category].forEach(
+                  ({ resId, need, have, shortfall }) => {
+                    const shortStr = shortfall
+                      ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(shortfall)})</span>`
+                      : ` <span style="color:green">(хапае)</span>`;
+                    ht.push(
+                      `<li>${cheats.translate(`LIB_${category.toUpperCase()}_NAME_${resId}`)}: трэба ${new Intl.NumberFormat().format(need)} / ёсць ${new Intl.NumberFormat().format(have)}${shortStr}</li>`,
+                    );
+                  },
+                );
+              }
+            });
+            ht.push("</ul>");
+          }
+
+          // --- вывад: прокачка абліччау (skins) ---
+          ht.push("<hr><b>Прокачка абліччау да максімальнага узроуню:</b>");
+          const skinCategories = Object.keys(skinUpTables);
+          if (skinCategories.length === 0) {
+            ht.push(
+              "<ul class='result'><li>Усе абліччы ужо максімальнага узроуню.</li></ul>",
+            );
+          } else {
+            ht.push("<ul class='result'>");
+            skinCategories.forEach((category) => {
+              if (category === "gold") {
+                const shortStr = skinUpTables[category].shortfall
+                  ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(skinUpTables[category].shortfall)})</span>`
+                  : ` <span style="color:green">(хапае)</span>`;
+                ht.push(
+                  `<li>Золата: трэба ${new Intl.NumberFormat().format(skinUpTables[category].needByResId)} / ёсць ${new Intl.NumberFormat().format(skinUpTables[category].have)}${shortStr}</li>`,
+                );
+              } else {
+                skinUpTables[category].forEach(
+                  ({ resId, need, have, shortfall }) => {
+                    const shortStr = shortfall
+                      ? ` <span style="color:red">(не хапае ${new Intl.NumberFormat().format(shortfall)})</span>`
+                      : ` <span style="color:green">(хапае)</span>`;
+                    ht.push(
+                      `<li>${cheats.translate(`LIB_${category.toUpperCase()}_NAME_${resId}`)}: трэба ${new Intl.NumberFormat().format(need)} / ёсць ${new Intl.NumberFormat().format(have)}${shortStr}</li>`,
+                    );
+                  },
+                );
+              }
+            });
+            ht.push("</ul>");
+          }
+
+          return ht.join("");
+        },
+      );
   }
 })();
